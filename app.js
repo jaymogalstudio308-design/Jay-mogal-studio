@@ -1,0 +1,28 @@
+(() => {
+ const cfg=window.STUDIO_CONFIG||{};
+ const client=window.supabase&&cfg.SUPABASE_URL&&cfg.SUPABASE_ANON_KEY?window.supabase.createClient(cfg.SUPABASE_URL,cfg.SUPABASE_ANON_KEY):null;
+ const $=s=>document.querySelector(s), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3200)};
+ $('#year').textContent=new Date().getFullYear();
+ $('.menu-toggle').addEventListener('click',()=>$('#nav').classList.toggle('open'));
+ $('#nav').addEventListener('click',e=>{if(e.target.tagName==='A')$('#nav').classList.remove('open')});
+ async function load(){
+  if(!client){toast('Website database configuration is missing.');return}
+  const [settings,services,projects,prices,reviews]=await Promise.all([
+   client.from('website_settings').select('*').eq('id',1).maybeSingle(),
+   client.from('services').select('*').eq('is_published',true).order('sort_order'),
+   client.from('portfolio').select('*').eq('is_published',true).order('sort_order'),
+   client.from('pricing').select('*').eq('is_published',true).order('sort_order'),
+   client.from('reviews').select('*').eq('is_approved',true).order('created_at',{ascending:false}).limit(6)
+  ]);
+  if(settings.data){const s=settings.data;document.title=s.business_name+' | Creative Studio';$('#hero-title').textContent=s.hero_title;$('#hero-subtitle').textContent=s.hero_subtitle;$('#about-text').textContent=s.about_text;$('#vision').textContent=s.vision;$('#mission').textContent=s.mission;document.querySelectorAll('.brand span:last-child').forEach(x=>x.innerHTML=esc(s.business_name).replace(' STUDIO',' <b>STUDIO</b>'));document.querySelectorAll('.contact-info a')[0].href='tel:'+s.phone.replace(/[^+\d]/g,'');document.querySelectorAll('.contact-info a')[0].textContent=s.phone+' ↗';document.querySelectorAll('.contact-info a')[1].href=s.instagram;document.querySelectorAll('.contact-info a')[1].textContent=s.instagram.replace(/^https?:\/\//,'')+' ↗';document.querySelector('.contact-info p').textContent=s.address;document.querySelectorAll('a[href^="https://wa.me/"]').forEach(a=>a.href='https://wa.me/'+s.whatsapp)}
+  const sv=services.data||[];$('#services-grid').innerHTML=sv.length?sv.map((x,i)=>'<article class="service-card">'+(x.image_url?'<img class="service-image" src="'+esc(x.image_url)+'" alt="'+esc(x.title)+'">':'<span class="num">0'+(i+1)+'</span>')+'<h3>'+esc(x.title)+'</h3><p>'+esc(x.description)+'</p><div class="price">'+esc(x.price_label||(x.price!=null?'₹'+x.price:'Contact for pricing'))+'</div></article>').join(''):'<div class="empty-state">Our services will appear here soon.</div>';
+  $('#service-select').innerHTML='<option value="">Select a service (optional)</option>'+sv.map(x=>'<option value="'+x.id+'">'+esc(x.title)+'</option>').join('');
+  const pr=projects.data||[];$('#portfolio-grid').innerHTML=pr.length?pr.map(x=>'<article class="project-card"><div class="project-image">'+(x.cover_image_url?'<img src="'+esc(x.cover_image_url)+'" alt="'+esc(x.title)+'">':esc(x.title.slice(0,2).toUpperCase()))+'</div><div class="project-meta"><small>'+esc(x.category)+'</small><h3>'+esc(x.title)+'</h3><p class="body-copy">'+esc(x.description)+'</p>'+(x.project_url?'<a href="'+esc(x.project_url)+'" target="_blank" rel="noreferrer">VIEW PROJECT ↗</a>':'')+'</div></article>').join(''):'<div class="empty-state">Our selected projects will appear here soon.</div>';
+  const ps=prices.data||[];$('#pricing-grid').innerHTML=ps.length?ps.map(x=>'<article class="price-card"><h3>'+esc(x.title)+'</h3><p>'+esc(x.description)+'</p><strong>'+esc(x.price_label||(x.amount!=null?'₹'+x.amount:'Contact us'))+'</strong><p>'+esc((x.features||[]).join(' · '))+'</p><a href="https://wa.me/919067537588" class="btn outline">Enquire ↗</a></article>').join(''):'<div class="empty-state">Contact us for a custom quote.</div>';
+  const rv=reviews.data||[];$('#reviews-grid').innerHTML=rv.length?rv.map(x=>'<article class="review-card"><div class="stars">'+('★'.repeat(x.rating))+'</div><p>“'+esc(x.review_text)+'”</p><b>'+esc(x.customer_name)+'</b></article>').join(''):'<div class="empty-state">Be the first to share your experience.</div>';
+ }
+ $('#inquiry-form').addEventListener('submit',async e=>{e.preventDefault();if(!client)return toast('Database is not configured.');const f=new FormData(e.currentTarget),service_id=f.get('service_id')||null,service_name=service_id?$('#service-select').selectedOptions[0].textContent:null;const {error}=await client.from('inquiries').insert({customer_name:f.get('customer_name'),mobile:f.get('mobile'),email:f.get('email')||null,service_id,service_name,message:f.get('message')});if(error){$('#inquiry-status').textContent='Could not send. Please WhatsApp us directly.';return}e.currentTarget.reset();$('#inquiry-status').textContent='Thank you! Your inquiry has been received.';toast('Inquiry sent successfully.')});
+ $('#review-form').addEventListener('submit',async e=>{e.preventDefault();if(!client)return toast('Database is not configured.');const f=new FormData(e.currentTarget);const {error}=await client.from('reviews').insert({customer_name:f.get('customer_name'),rating:Number(f.get('rating')),review_text:f.get('review_text'),is_approved:false});if(error)return toast('Could not submit review. Please try again.');e.currentTarget.reset();toast('Review submitted for approval.')});
+ load();
+})();
